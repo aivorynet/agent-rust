@@ -5,7 +5,9 @@ edition = "2021"
 authors = ["ILSCIPIO GmbH <info@ilscipio.com>"]
 description = "AIVory Monitor Rust Agent - Remote debugging with AI-powered fix generation"
 license = "MIT"
-repository = "https://github.com/ilscipio/aivory-monitor"
+repository = "https://github.com/aivorynet/agent-rust"
+homepage = "https://aivory.net/monitor/"
+documentation = "https://github.com/aivorynet/agent-rust#readme"
 
 [dependencies]
 backtrace = "0.3"
