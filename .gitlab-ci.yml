@@ -39,4 +39,4 @@ publish:
   except:
     - branches
   script:
-    - cargo publish
+    - cargo publish --token $CARGO_REGISTRY_TOKEN
