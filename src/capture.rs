@@ -143,7 +143,7 @@ fn capture_stack_trace() -> Vec<StackFrame> {
 
             let file_path = symbol.filename().map(|p| p.to_string_lossy().to_string());
             let file_name = file_path.as_ref().and_then(|p| {
-                p.split(['/', '\\']).last().map(|s| s.to_string())
+                p.split(['/', '\\']).next_back().map(|s| s.to_string())
             });
 
             let is_native = file_path
