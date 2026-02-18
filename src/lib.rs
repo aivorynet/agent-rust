@@ -4,7 +4,7 @@
 //!
 //! # Usage
 //!
-//! ```rust
+//! ```rust,no_run
 //! use aivory_monitor::Agent;
 //!
 //! fn main() {
@@ -14,11 +14,6 @@
 //!         environment: "production".to_string(),
 //!         ..Default::default()
 //!     });
-//!
-//!     // Capture errors manually
-//!     if let Err(e) = risky_operation() {
-//!         aivory_monitor::capture_error(&e);
-//!     }
 //!
 //!     // Or use the panic hook (automatically installed)
 //! }
