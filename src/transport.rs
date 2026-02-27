@@ -128,7 +128,7 @@ impl Connection {
                 "agent_id": config.agent_id,
                 "hostname": config.hostname,
                 "environment": config.environment,
-                "agent_version": "1.0.0",
+                "agent_version": "1.0.1",
                 "runtime": "rust",
                 "runtime_version": env!("CARGO_PKG_VERSION"),
                 "platform": std::env::consts::OS,

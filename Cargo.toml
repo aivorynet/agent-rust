@@ -1,6 +1,6 @@
 [package]
 name = "aivory-monitor"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 authors = ["ILSCIPIO GmbH <info@ilscipio.com>"]
 description = "AIVory Monitor Rust Agent - Remote debugging with AI-powered fix generation"

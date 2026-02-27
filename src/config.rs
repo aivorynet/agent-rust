@@ -37,7 +37,7 @@ impl Default for Config {
         Config {
             api_key: env::var("AIVORY_API_KEY").unwrap_or_default(),
             backend_url: env::var("AIVORY_BACKEND_URL")
-                .unwrap_or_else(|_| "wss://api.aivory.net/ws/agent".to_string()),
+                .unwrap_or_else(|_| "wss://api.aivory.net/monitor/agent".to_string()),
             environment: env::var("AIVORY_ENVIRONMENT")
                 .unwrap_or_else(|_| "production".to_string()),
             sampling_rate: env::var("AIVORY_SAMPLING_RATE")
