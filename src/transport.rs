@@ -5,10 +5,19 @@ use crate::config::Config;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
+
+/// Result of a single connection attempt.
+enum ConnectResult {
+    /// Normal disconnect (server closed, network error, etc.) - should reconnect.
+    Disconnected,
+    /// Authentication failed - should NOT reconnect.
+    AuthError,
+}
 
 /// WebSocket connection to the AIVory backend.
 pub struct Connection {
@@ -63,8 +72,29 @@ impl Connection {
             let max_reconnect_attempts = 10;
 
             loop {
-                match Self::connect_once(&url, &config, sender_slot_clone.clone(), connected_clone.clone()).await {
-                    Ok(_) => {
+                // Create a cancellation flag for the heartbeat task
+                let heartbeat_cancel = Arc::new(AtomicBool::new(false));
+
+                let result = Self::connect_once(
+                    &url,
+                    &config,
+                    sender_slot_clone.clone(),
+                    connected_clone.clone(),
+                    heartbeat_cancel.clone(),
+                ).await;
+
+                // Cancel the heartbeat task before reconnecting
+                heartbeat_cancel.store(true, Ordering::SeqCst);
+
+                *connected_clone.write() = false;
+                *sender_slot_clone.write() = None;
+
+                match result {
+                    Ok(ConnectResult::AuthError) => {
+                        eprintln!("[AIVory Monitor] Authentication failed, stopping reconnect");
+                        break;
+                    }
+                    Ok(ConnectResult::Disconnected) => {
                         reconnect_attempts = 0;
                     }
                     Err(e) => {
@@ -73,9 +103,6 @@ impl Connection {
                         }
                     }
                 }
-
-                *connected_clone.write() = false;
-                *sender_slot_clone.write() = None;
 
                 reconnect_attempts += 1;
                 if reconnect_attempts > max_reconnect_attempts {
@@ -103,7 +130,8 @@ impl Connection {
         config: &Config,
         sender_slot: Arc<RwLock<Option<mpsc::UnboundedSender<String>>>>,
         connected: Arc<RwLock<bool>>,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        heartbeat_cancel: Arc<AtomicBool>,
+    ) -> Result<ConnectResult, Box<dyn std::error::Error + Send + Sync>> {
         if config.debug {
             println!("[AIVory Monitor] Connecting to {}", url);
         }
@@ -128,7 +156,7 @@ impl Connection {
                 "agent_id": config.agent_id,
                 "hostname": config.hostname,
                 "environment": config.environment,
-                "agent_version": "1.0.1",
+                "agent_version": "1.0.2",
                 "runtime": "rust",
                 "runtime_version": env!("CARGO_PKG_VERSION"),
                 "platform": std::env::consts::OS,
@@ -153,12 +181,15 @@ impl Connection {
             }
         });
 
-        // Heartbeat
+        // Heartbeat with cancellation
         let tx_heartbeat = tx.clone();
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(30));
             loop {
                 interval.tick().await;
+                if heartbeat_cancel.load(Ordering::SeqCst) {
+                    break;
+                }
                 let heartbeat = OutgoingMessage {
                     msg_type: "heartbeat".to_string(),
                     payload: serde_json::json!({
@@ -200,7 +231,7 @@ impl Connection {
 
                                 if code == "auth_error" || code == "invalid_api_key" {
                                     eprintln!("[AIVory Monitor] Authentication failed");
-                                    return Err("Authentication failed".into());
+                                    return Ok(ConnectResult::AuthError);
                                 }
                             }
                             _ => {}
@@ -218,7 +249,7 @@ impl Connection {
             }
         }
 
-        Ok(())
+        Ok(ConnectResult::Disconnected)
     }
 
     /// Disconnects from the backend.
@@ -234,6 +265,29 @@ impl Connection {
             let msg = OutgoingMessage {
                 msg_type: "exception".to_string(),
                 payload: capture,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+            };
+
+            if let Ok(json) = serde_json::to_string(&msg) {
+                let _ = tx.send(json);
+            }
+        }
+    }
+
+    /// Sends a breakpoint hit event.
+    pub fn send_breakpoint_hit(&self, breakpoint_id: &str, agent_id: &str, data: serde_json::Value) {
+        let sender = self.sender.read();
+        if let Some(tx) = sender.as_ref() {
+            let mut payload = match data {
+                serde_json::Value::Object(map) => map,
+                _ => serde_json::Map::new(),
+            };
+            payload.insert("breakpoint_id".to_string(), serde_json::Value::String(breakpoint_id.to_string()));
+            payload.insert("agent_id".to_string(), serde_json::Value::String(agent_id.to_string()));
+
+            let msg = OutgoingMessage {
+                msg_type: "breakpoint_hit".to_string(),
+                payload: serde_json::Value::Object(payload),
                 timestamp: chrono::Utc::now().timestamp_millis(),
             };
 
